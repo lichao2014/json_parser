@@ -1,21 +1,5 @@
-#include <stdlib.h>
 #include <assert.h>
 #include "json_parser.h"
-
-
-static void *
-test_on_alloc(void *ctx, size_t size)
-{
-    return malloc(size);
-}
-
-
-static void
-test_on_free(void *ctx, void *p)
-{
-    free(p);
-}
-
 
 #define TEST_JSON_STR       "   {\"x\" : { \"y\" : \"123\", \"z\" : { \"w\" : [\"1\", \"2\"] } } }"
 
