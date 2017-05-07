@@ -2,19 +2,54 @@
 #define _JSON_PARSER_H_INCLUDED
 
 #include <stdint.h>
+#include "json.h"
 
 #define JSON_PARSER_ASSERT(opt)
 
 #define JSON_PARSER_IS_WS(c)     \
     (' ' == (c)) || ('\n' == (c)) || ('\r' == (c)) || ('\t' == (c))
 
-#define JSON_PARSER_SKIP_WS(stream, ctx)                \
-    while (JSON_PARSER_IS_WS((stream)->peek(ctx))) {    \
-        (stream)->take(ctx);                            \
+
+#define JSON_PARSER_PEEK(stream)                                    \
+    (stream)->vtbl->peek((stream)->ctx)
+
+
+#define JSON_PARSER_TAKE(stream)                                    \
+    (stream)->vtbl->take((stream)->ctx)
+
+
+#define JSON_PARSER_PUT_BEGIN(stream)                               \
+    (stream)->vtbl->put_begin((stream)->ctx)
+
+
+#define JSON_PARSER_PUT(stream, c)                                  \
+    (stream)->vtbl->put((stream)->ctx, c)
+
+
+#define JSON_PARSER_PUT_END(stream, begin)                          \
+    (stream)->vtbl->put_end((stream)->ctx, begin)
+
+
+#define JSON_PARSER_CONSUME(stream, expect)                         \
+    ((expect == JSON_PARSER_PEEK(stream))                           \
+        ? (JSON_PARSER_TAKE(stream), 0) : -1)
+
+
+#define JSON_PARSER_SKIP_WS(stream)                                 \
+    while (JSON_PARSER_IS_WS(JSON_PARSER_PEEK(stream))) {           \
+        JSON_PARSER_TAKE(stream);                                   \
     }
 
-#define JSON_PARSER_CONSUME(stream, ctx, expect)                 \
-    ((expect == (stream)->peek(ctx)) ? ((stream)->take(ctx), 0) : -1)
+
+#define JSON_PARSER_HANDLER(handler, h, ...)                        \
+    (handler->vtbl->h)(handler->ctx, __VA_ARGS__)
+
+
+#define JSON_PARSER_ALLOC(parser, size)                             \
+    ((parser)->alloc.vtbl->on_alloc)((parser)->alloc.ctx, size)
+
+#define JSON_PARSER_FREE(parser, p)                                 \
+    ((parser)->alloc.vtbl->on_free)((parser)->alloc.ctx, p)
 
 
 #define JSON_PARSER_ERR_MAP(XX)             \
@@ -44,7 +79,25 @@ enum json_parser_error_code_t {
 #undef XX
 };
 
-struct json_parser_handler_t {
+
+struct json_parser_stream_vtbl_t {
+    char(*peek)(void *ctx);
+    char(*take)(void *ctx);
+    size_t(*tell)(void *ctx);
+    char*(*put_begin)(void *ctx);
+    void(*put)(void *ctx, char c);
+    void(*flush)(void *ctx);
+    size_t(*put_end)(void *ctx, char *begin);
+};
+
+
+struct json_parser_stream_t {
+    struct json_parser_stream_vtbl_t *vtbl;
+    void *ctx;
+};
+
+
+struct json_parser_handler_vtbl_t {
     int(*on_null)(void *ctx);
     int(*on_bool)(void *ctx, int b);
     int(*on_int)(void *ctx, int i);
@@ -61,37 +114,68 @@ struct json_parser_handler_t {
 };
 
 
-struct json_parser_stream_t {
-    char(*peek)(void *ctx);
-    char(*take)(void *ctx);
-    size_t(*tell)(void *ctx);
-    char*(*put_begin)(void *ctx);
-    void(*put)(void *ctx, char c);
-    void(*flush)(void *ctx);
-    size_t(*put_end)(void *ctx, char *begin);
+struct json_parser_handler_t {
+    struct json_parser_handler_vtbl_t *vtbl;
+    void *ctx;
 };
 
 
-int json_parse_string(struct json_parser_stream_t *stream, struct json_parser_handler_t *handler, void *ctx);
+struct json_parser_allocator_vtbl_t {
+    void *(*on_alloc)(void *ctx, size_t size);
+    void(*on_free)(void *ctx, void *p);
+};
 
-int json_parse_number(struct json_parser_stream_t *stream, struct json_parser_handler_t *handler, void *ctx);
 
-int json_parse_object(struct json_parser_stream_t *stream, struct json_parser_handler_t *handler, void *ctx);
+struct json_parser_allocator_t {
+    struct json_parser_allocator_vtbl_t *vtbl;
+    void *ctx;
+};
 
-int json_parse_array(struct json_parser_stream_t *stream, struct json_parser_handler_t *handler, void *ctx);
 
-int json_parse_true(struct json_parser_stream_t *stream, struct json_parser_handler_t *handler, void *ctx);
+struct json_parser_t {
+    struct json_value_t *root;
+    struct json_value_t *current;
 
-int json_parse_false(struct json_parser_stream_t *stream, struct json_parser_handler_t *handler, void *ctx);
+    struct json_parser_stream_t stream;
+    struct json_parser_allocator_t alloc;
+};
 
-int json_parse_null(struct json_parser_stream_t *stream, struct json_parser_handler_t *handler, void *ctx);
 
-int json_parse_value(struct json_parser_stream_t *stream, struct json_parser_handler_t *handler, void *ctx);
+struct json_parser_str_stream_t {
+    char *src;
+    char *dst;
+    char *head;
+    char *tail;
+};
 
-typedef int(*json_parse_fn_t)(struct json_parser_stream_t *, struct json_parser_handler_t *, void *);
-json_parse_fn_t json_parse_test(struct json_parser_stream_t *, void *);
 
-int json_parse(struct json_parser_stream_t *stream, struct json_parser_handler_t *handler, void *ctx);
+int json_read_string(struct json_parser_stream_t *stream, struct json_parser_handler_t *handler);
+
+int json_read_number(struct json_parser_stream_t *stream, struct json_parser_handler_t *handler);
+
+int json_read_object(struct json_parser_stream_t *stream, struct json_parser_handler_t *handler);
+
+int json_read_array(struct json_parser_stream_t *stream, struct json_parser_handler_t *handler);
+
+int json_read_true(struct json_parser_stream_t *stream, struct json_parser_handler_t *handler);
+
+int json_read_false(struct json_parser_stream_t *stream, struct json_parser_handler_t *handler);
+
+int json_read_null(struct json_parser_stream_t *stream, struct json_parser_handler_t *handler);
+
+int json_read_value(struct json_parser_stream_t *stream, struct json_parser_handler_t *handler);
+
+typedef int(*json_read_fn_t)(struct json_parser_stream_t *stream, struct json_parser_handler_t *handler);
+json_read_fn_t json_read_testing(struct json_parser_stream_t *);
+
+int json_read(struct json_parser_stream_t *stream, struct json_parser_handler_t *handler);
+
+int json_parse(struct json_parser_t *parser);
+
+void json_free(struct json_parser_t *parser);
+
+void json_parser_prepare_str_stream(struct json_parser_t *parser, struct json_parser_str_stream_t *stream, const char *str, size_t len);
+
 
 #endif //_JSON_PARSER_H_INCLUDED
 
