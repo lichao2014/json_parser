@@ -1,7 +1,7 @@
 #ifndef _JSON_H_INCLUDED
 #define _JSON_H_INCLUDED
 
-#include <inttypes.h>
+#include <stddef.h>
 
 enum json_value_type_t {
     JSON_VALUE_TYPE_NONE,

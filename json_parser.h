@@ -42,7 +42,7 @@
 
 
 #define JSON_PARSER_HANDLER(handler, h, ...)                        \
-    (handler->vtbl->h)(handler->ctx, __VA_ARGS__)
+    (handler->vtbl->h)(handler->ctx, ##__VA_ARGS__)
 
 
 #define JSON_PARSER_ALLOC(parser, size)                             \

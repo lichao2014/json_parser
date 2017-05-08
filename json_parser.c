@@ -367,20 +367,20 @@ json_value_free(struct json_parser_allocator_t *alloc, struct json_value_t *v, i
 }
 
 
-static int
-json_parser_on_null(void *ctx)
+static struct json_value_t *
+json_value_add(struct json_parser_allocator_t *alloc, struct json_value_t *v)
 {
-    struct json_parser_t *parser = ctx;
-    struct json_value_t *v = parser->current;
+    struct json_value_t *p = NULL;
 
     if (JSON_VALUE_TYPE_OBJECT == v->type) {
         JSON_PARSER_ASSERT(v->obj.tail);
-        v->obj.tail->val.type = JSON_VALUE_TYPE_NULL;
+        p = &v->obj.tail->val;
         ++v->obj.size;
     }
     else if (JSON_VALUE_TYPE_ARRAY == v->type) {
-        struct json_array_elt_t *elt = JSON_PARSER_ALLOC(parser, sizeof(struct json_array_elt_t));
-        elt->data.type = JSON_VALUE_TYPE_NULL;
+        struct json_array_elt_t *elt = alloc->vtbl->on_alloc(alloc->ctx, sizeof(struct json_array_elt_t));
+        p = &elt->data;
+        p->parent = v;
         elt->next = NULL;
 
         if (v->arr.tail) {
@@ -392,11 +392,47 @@ json_parser_on_null(void *ctx)
 
         v->arr.tail = elt;
         ++v->arr.size;
+    }
 
+    return p;
+}
+
+
+static struct json_object_elt_t *
+json_value_add_key(struct json_parser_allocator_t *alloc, struct json_value_t *v, char *str, size_t len)
+{
+    JSON_PARSER_ASSERT(JSON_VALUE_TYPE_OBJECT == v->type);
+
+    struct json_object_elt_t *p = alloc->vtbl->on_alloc(alloc->ctx, sizeof(struct json_object_elt_t));
+    p->key.data = str;
+    p->key.len = len;
+    p->val.type = JSON_VALUE_TYPE_NONE;
+    p->val.parent = v;
+    p->next = NULL;
+
+    if (v->obj.tail) {
+        v->obj.tail->next = p;
     }
     else {
-        return -1;
+        v->obj.head = p;
     }
+
+    v->obj.tail = p;
+
+    return p;
+}
+
+
+static int
+json_parser_on_null(void *ctx)
+{
+    struct json_parser_t *parser = ctx;
+    struct json_value_t *v = parser->current;
+
+    struct json_value_t *p = json_value_add(&parser->alloc, v);
+    JSON_PARSER_ASSERT(p);
+
+    p->type = JSON_VALUE_TYPE_NULL;
 
     return 0;
 }
@@ -408,32 +444,11 @@ json_parser_on_bool(void *ctx, int b)
     struct json_parser_t *parser = ctx;
     struct json_value_t *v = parser->current;
 
-    if (JSON_VALUE_TYPE_OBJECT == v->type) {
-        JSON_PARSER_ASSERT(v->obj.tail);
-        v->obj.tail->val.type = JSON_VALUE_TYPE_BOOL;
-        v->obj.tail->val.b = !!b;
-        ++v->obj.size;
-    }
-    else if (JSON_VALUE_TYPE_ARRAY == v->type) {
-        struct json_array_elt_t *elt = JSON_PARSER_ALLOC(parser, sizeof(struct json_array_elt_t));
-        elt->data.type = JSON_VALUE_TYPE_BOOL;
-        elt->data.b = !!b;
-        elt->next = NULL;
+    struct json_value_t *p = json_value_add(&parser->alloc, v);
+    JSON_PARSER_ASSERT(p);
 
-        if (v->arr.tail) {
-            v->arr.tail->next = elt;
-        }
-        else {
-            v->arr.head = elt;
-        }
-
-        v->arr.tail = elt;
-        ++v->arr.size;
-
-    }
-    else {
-        return -1;
-    }
+    p->type = JSON_VALUE_TYPE_BOOL;
+    p->b = !!b;
 
     return 0;
 }
@@ -445,32 +460,11 @@ json_parser_on_int(void *ctx, int i)
     struct json_parser_t *parser = ctx;
     struct json_value_t *v = parser->current;
 
-    if (JSON_VALUE_TYPE_OBJECT == v->type) {
-        JSON_PARSER_ASSERT(v->obj.tail);
-        v->obj.tail->val.type = JSON_VALUE_TYPE_INT;
-        v->obj.tail->val.i = i;
-        ++v->obj.size;
-    }
-    else if (JSON_VALUE_TYPE_ARRAY == v->type) {
-        struct json_array_elt_t *elt = JSON_PARSER_ALLOC(parser, sizeof(struct json_array_elt_t));
-        elt->data.type = JSON_VALUE_TYPE_INT;
-        elt->data.i = i;
-        elt->next = NULL;
+    struct json_value_t *p = json_value_add(&parser->alloc, v);
+    JSON_PARSER_ASSERT(p);
 
-        if (v->arr.tail) {
-            v->arr.tail->next = elt;
-        }
-        else {
-            v->arr.head = elt;
-        }
-
-        v->arr.tail = elt;
-        ++v->arr.size;
-
-    }
-    else {
-        return -1;
-    }
+    p->type = JSON_VALUE_TYPE_INT;
+    p->i = i;
 
     return 0;
 }
@@ -502,32 +496,11 @@ json_parser_on_double(void *ctx, double d)
     struct json_parser_t *parser = ctx;
     struct json_value_t *v = parser->current;
 
-    if (JSON_VALUE_TYPE_OBJECT == v->type) {
-        JSON_PARSER_ASSERT(v->obj.tail);
-        v->obj.tail->val.type = JSON_VALUE_TYPE_DOUBLE;
-        v->obj.tail->val.d = d;
-        ++v->obj.size;
-    }
-    else if (JSON_VALUE_TYPE_ARRAY == v->type) {
-        struct json_array_elt_t *elt = JSON_PARSER_ALLOC(parser, sizeof(struct json_array_elt_t));
-        elt->data.type = JSON_VALUE_TYPE_DOUBLE;
-        elt->data.d = d;
-        elt->next = NULL;
+    struct json_value_t *p = json_value_add(&parser->alloc, v);
+    JSON_PARSER_ASSERT(p);
 
-        if (v->arr.tail) {
-            v->arr.tail->next = elt;
-        }
-        else {
-            v->arr.head = elt;
-        }
-
-        v->arr.tail = elt;
-        ++v->arr.size;
-
-    }
-    else {
-        return -1;
-    }
+    p->type = JSON_VALUE_TYPE_DOUBLE;
+    p->d = d;
 
     return 0;
 }
@@ -539,34 +512,12 @@ json_parser_on_string(void *ctx, const char *str, size_t len)
     struct json_parser_t *parser = ctx;
     struct json_value_t *v = parser->current;
 
-    if (JSON_VALUE_TYPE_OBJECT == v->type) {
-        JSON_PARSER_ASSERT(v->obj.tail);
-        v->obj.tail->val.type = JSON_VALUE_TYPE_STRING;
-        v->obj.tail->val.str.data = (char *)str;
-        v->obj.tail->val.str.len = len;
-        ++v->obj.size;
-    }
-    else if (JSON_VALUE_TYPE_ARRAY == v->type) {
-        struct json_array_elt_t *elt = JSON_PARSER_ALLOC(parser, sizeof(struct json_array_elt_t));
-        elt->data.type = JSON_VALUE_TYPE_STRING;
-        elt->data.str.data = (char *)str;
-        elt->data.str.len = len;
-        elt->next = NULL;
+    struct json_value_t *p = json_value_add(&parser->alloc, v);
+    JSON_PARSER_ASSERT(p);
 
-        if (v->arr.tail) {
-            v->arr.tail->next = elt;
-        }
-        else {
-            v->arr.head = elt;
-        }
-
-        v->arr.tail = elt;
-        ++v->arr.size;
-
-    }
-    else {
-        return -1;
-    }
+    p->type = JSON_VALUE_TYPE_STRING;
+    p->str.data = (char *)str;
+    p->str.len = len;
 
     return 0;
 }
@@ -578,22 +529,7 @@ json_parser_on_key(void *ctx, const char *str, size_t len)
     struct json_parser_t *parser = ctx;
     struct json_value_t *v = parser->current;
 
-    JSON_PARSER_ASSERT(JSON_VALUE_TYPE_OBJECT == v->type);
-
-    struct json_object_elt_t *p = JSON_PARSER_ALLOC(parser, sizeof(struct json_object_elt_t));
-    p->key.data = (char *)str;
-    p->key.len = len;
-    p->val.type = JSON_VALUE_TYPE_NONE;
-    p->next = NULL;
-
-    if (v->obj.tail) {
-        v->obj.tail->next = p;
-    }
-    else {
-        v->obj.head = p;
-    }
-
-    v->obj.tail = p;
+    json_value_add_key(&parser->alloc, v, (char *)str, len);
 
     return 0;
 }
@@ -609,31 +545,13 @@ json_parser_on_start_object(void *ctx)
         return 0;
     }
 
-    struct json_value_t *p;
-    if (JSON_VALUE_TYPE_OBJECT == v->type) {
-        p = &v->obj.tail->val;
-    }
-    else if (JSON_VALUE_TYPE_ARRAY == v->type) {
-        struct json_array_elt_t *elt = JSON_PARSER_ALLOC(parser, sizeof(struct json_array_elt_t));
-        elt->next = NULL;
-
-        if (v->arr.tail) {
-            v->arr.tail->next = elt;
-        }
-        else {
-            v->arr.head = elt;
-        }
-
-        v->arr.tail = elt;
-
-        p = &elt->data;
-    }
+    struct json_value_t *p = json_value_add(&parser->alloc, v);
+    JSON_PARSER_ASSERT(p);
 
     p->type = JSON_VALUE_TYPE_OBJECT;
     p->obj.size = 0;
     p->obj.head = p->obj.tail = NULL;
 
-    p->parent = parser->current;
     parser->current = p;
 
     return 0;
@@ -645,23 +563,9 @@ json_parser_on_end_object(void *ctx, size_t count)
 {
     struct json_parser_t *parser = ctx;
     struct json_value_t *v = parser->current;
-    struct json_value_t *pv = v->parent;
 
-    if (v == parser->root) {
-        return 0;
-    }
+    parser->current = v->parent;
 
-    if (JSON_VALUE_TYPE_OBJECT == pv->type) {
-        ++pv->obj.size;
-    }
-    else if (JSON_VALUE_TYPE_ARRAY == pv->type) {
-        ++pv->arr.size;
-    }
-    else {
-        return -1;
-    }
-
-    parser->current = pv;
     return 0;
 }
 
@@ -671,31 +575,13 @@ json_parser_on_start_array(void *ctx)
     struct json_parser_t *parser = ctx;
     struct json_value_t *v = parser->current;
 
-    struct json_value_t *p;
-    if (JSON_VALUE_TYPE_OBJECT == v->type) {
-        p = &v->obj.tail->val;
-    }
-    else if (JSON_VALUE_TYPE_ARRAY == v->type) {
-        struct json_array_elt_t *elt = JSON_PARSER_ALLOC(parser, sizeof(struct json_array_elt_t));
-        elt->next = NULL;
-
-        if (v->arr.tail) {
-            v->arr.tail->next = elt;
-        }
-        else {
-            v->arr.head = elt;
-        }
-
-        v->arr.tail = elt;
-
-        p = &elt->data;
-    }
+    struct json_value_t *p = json_value_add(&parser->alloc, v);
+    JSON_PARSER_ASSERT(p);
 
     p->type = JSON_VALUE_TYPE_ARRAY;
     p->arr.size = 0;
     p->arr.head = p->arr.tail = NULL;
 
-    p->parent = parser->current;
     parser->current = p;
 
     return 0;
@@ -706,19 +592,9 @@ json_parser_on_end_array(void *ctx, size_t count)
 {
     struct json_parser_t *parser = ctx;
     struct json_value_t *v = parser->current;
-    struct json_value_t *pv = v->parent;
 
-    if (JSON_VALUE_TYPE_OBJECT == pv->type) {
-        ++pv->obj.size;
-    }
-    else if (JSON_VALUE_TYPE_ARRAY == pv->type) {
-        ++pv->arr.size;
-    }
-    else {
-        return -1;
-    }
+    parser->current = v->parent;
 
-    parser->current = pv;
     return 0;
 }
 
