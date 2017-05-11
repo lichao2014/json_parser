@@ -3,6 +3,7 @@
 
 #include <stddef.h>
 
+
 enum json_value_type_t {
     JSON_VALUE_TYPE_NONE,
     JSON_VALUE_TYPE_NULL,
@@ -61,6 +62,42 @@ struct json_object_elt_t {
 
     struct json_object_elt_t *next;
 };
+
+
+struct json_stream_vtbl_t {
+    char(*peek)(void *ctx);
+    char(*take)(void *ctx);
+    size_t(*tell)(void *ctx);
+    char*(*put_begin)(void *ctx);
+    void(*put)(void *ctx, char c);
+    void(*flush)(void *ctx);
+    size_t(*put_end)(void *ctx, char *begin);
+};
+
+
+struct json_stream_t {
+    struct json_stream_vtbl_t *vtbl;
+    void *ctx;
+};
+
+
+struct json_allocator_vtbl_t {
+    void *(*on_alloc)(void *ctx, size_t size);
+    void(*on_free)(void *ctx, void *p);
+};
+
+
+struct json_allocator_t {
+    struct json_allocator_vtbl_t *vtbl;
+    void *ctx;
+};
+
+
+void json_value_free(struct json_allocator_t *a, struct json_value_t *v, int dont_free);
+
+struct json_value_t *json_value_add(struct json_allocator_t *a, struct json_value_t *v, enum json_value_type_t type);
+
+struct json_object_elt_t *json_value_add_key(struct json_allocator_t *a, struct json_value_t *v, char *str, size_t len);
 
 
 #endif //_JSON_H_INCLUDED

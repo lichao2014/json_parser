@@ -4,7 +4,6 @@
 #include <stdint.h>
 #include "json.h"
 
-#define JSON_PARSER_ASSERT(opt)
 
 #define JSON_PARSER_IS_WS(c)     \
     (' ' == (c)) || ('\n' == (c)) || ('\r' == (c)) || ('\t' == (c))
@@ -80,23 +79,6 @@ enum json_parser_error_code_t {
 };
 
 
-struct json_parser_stream_vtbl_t {
-    char(*peek)(void *ctx);
-    char(*take)(void *ctx);
-    size_t(*tell)(void *ctx);
-    char*(*put_begin)(void *ctx);
-    void(*put)(void *ctx, char c);
-    void(*flush)(void *ctx);
-    size_t(*put_end)(void *ctx, char *begin);
-};
-
-
-struct json_parser_stream_t {
-    struct json_parser_stream_vtbl_t *vtbl;
-    void *ctx;
-};
-
-
 struct json_parser_handler_vtbl_t {
     int(*on_null)(void *ctx);
     int(*on_bool)(void *ctx, int b);
@@ -120,42 +102,44 @@ struct json_parser_handler_t {
 };
 
 
-struct json_parser_allocator_vtbl_t {
-    void *(*on_alloc)(void *ctx, size_t size);
-    void(*on_free)(void *ctx, void *p);
-};
-
-
-struct json_parser_allocator_t {
-    struct json_parser_allocator_vtbl_t *vtbl;
-    void *ctx;
-};
-
-
 struct json_parser_t {
-    struct json_value_t *root;
     struct json_value_t *current;
 
-    struct json_parser_stream_t stream;
-    struct json_parser_allocator_t alloc;
+    uint16_t depth;
+    uint16_t max_depth;
+
+    struct json_value_t *root;
+    struct json_allocator_t *a;
 };
 
 
-struct json_parser_str_stream_t {
-    char *src;
-    char *dst;
-    char *head;
-    char *tail;
-};
+static inline void
+json_parser_init(struct json_parser_t *parser, uint16_t max_depth, struct json_allocator_t *a)
+{
+    parser->root = parser->current = NULL;
+    parser->depth = 0;
+    parser->max_depth = max_depth;
+    parser->a = a;
+}
 
 
-int json_read(struct json_parser_stream_t *stream, struct json_parser_handler_t *handler);
+static inline void
+json_parser_clear(struct json_parser_t *parser)
+{
+    if (parser->root) {
+        json_value_free(parser->a, parser->root, 0);
+    }
 
-int json_parse(struct json_parser_t *parser);
+    parser->root = parser->current = NULL;
+    parser->depth = 0;
+}
 
-void json_free(struct json_parser_t *parser);
 
-void json_parser_prepare_str_stream(struct json_parser_t *parser, struct json_parser_str_stream_t *stream, const char *str, size_t len);
+int json_read(struct json_stream_t *stream, struct json_parser_handler_t *handler);
+
+int json_parse_stream(struct json_parser_t *parser, struct json_stream_t *stream);
+
+int json_parse_str(struct json_parser_t *parser, const char *str, size_t len);
 
 
 #endif //_JSON_PARSER_H_INCLUDED

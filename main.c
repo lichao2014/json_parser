@@ -1,21 +1,21 @@
 #include <assert.h>
 #include "json_parser.h"
 
-#define TEST_JSON_STR       "   {\"x\" : { \"y\" : \"123\", \"z\" : { \"w\" : [\"1\", \"2\"] } } }"
+#define TEST_JSON_STR       "[1, false, null, \"x\", { \"x\" : 2.343 }]"
 
 int
 main()
 {
-    struct json_parser_str_stream_t stream;
     struct json_parser_t parser = { 0 };
 
+    json_parser_init(&parser, 10, NULL);
+
     while (1) {
-        json_parser_prepare_str_stream(&parser, &stream, TEST_JSON_STR, sizeof(TEST_JSON_STR) - 1);
-        int ret = json_parse(&parser);
+        int ret = json_parse_str(&parser, TEST_JSON_STR, sizeof(TEST_JSON_STR) - 1);
         assert(0 == ret);
-        json_free(&parser);
     }
 
+    json_parser_clear(&parser);
 
     return 0;
 }

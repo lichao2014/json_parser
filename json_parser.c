@@ -1,13 +1,14 @@
 #include "json_parser.h"
 #include <stdlib.h>
+#include <assert.h>
 
 
 static int
-json_read_value(struct json_parser_stream_t *stream, struct json_parser_handler_t *handler);
+json_read_value(struct json_stream_t *stream, struct json_parser_handler_t *handler);
 
 
 static int
-json_read_string_opt(struct json_parser_stream_t *stream, struct json_parser_handler_t *handler, int is_key)
+json_read_string_opt(struct json_stream_t *stream, struct json_parser_handler_t *handler, int is_key)
 {
     if (JSON_PARSER_CONSUME(stream, '"')) {
         return JSON_PARSER_ERROR_VALUE_INVALID;
@@ -21,7 +22,7 @@ json_read_string_opt(struct json_parser_stream_t *stream, struct json_parser_han
     }
 
     size_t length = JSON_PARSER_PUT_END(stream, head);
-    JSON_PARSER_ASSERT(length <= 0xFFFFFFFF);
+    assert(length <= 0xFFFFFFFF);
 
     if ((is_key ? handler->vtbl->on_key : handler->vtbl->on_string)(handler->ctx, head, length)) {
         return JSON_PARSER_ERROR_TERMINATION;
@@ -32,7 +33,7 @@ json_read_string_opt(struct json_parser_stream_t *stream, struct json_parser_han
 
 
 static int
-json_read_object(struct json_parser_stream_t *stream, struct json_parser_handler_t *handler)
+json_read_object(struct json_stream_t *stream, struct json_parser_handler_t *handler)
 {
     if (JSON_PARSER_CONSUME(stream, '{')) {
         return JSON_PARSER_ERROR_VALUE_INVALID;
@@ -99,14 +100,14 @@ json_read_object(struct json_parser_stream_t *stream, struct json_parser_handler
 
 
 static int
-json_read_string(struct json_parser_stream_t *stream, struct json_parser_handler_t *handler)
+json_read_string(struct json_stream_t *stream, struct json_parser_handler_t *handler)
 {
     return json_read_string_opt(stream, handler, 0);
 }
 
 
 static inline int
-json_read_null(struct json_parser_stream_t *stream, struct json_parser_handler_t *handler)
+json_read_null(struct json_stream_t *stream, struct json_parser_handler_t *handler)
 {
     if (JSON_PARSER_CONSUME(stream, 'n')
         || JSON_PARSER_CONSUME(stream, 'u')
@@ -125,7 +126,7 @@ json_read_null(struct json_parser_stream_t *stream, struct json_parser_handler_t
 
 
 static inline int
-json_read_true(struct json_parser_stream_t *stream, struct json_parser_handler_t *handler)
+json_read_true(struct json_stream_t *stream, struct json_parser_handler_t *handler)
 {
     if (JSON_PARSER_CONSUME(stream, 't')
         || JSON_PARSER_CONSUME(stream, 'r')
@@ -144,7 +145,7 @@ json_read_true(struct json_parser_stream_t *stream, struct json_parser_handler_t
 
 
 static inline int
-json_read_false(struct json_parser_stream_t *stream, struct json_parser_handler_t *handler)
+json_read_false(struct json_stream_t *stream, struct json_parser_handler_t *handler)
 {
     if (JSON_PARSER_CONSUME(stream, 'f')
         || JSON_PARSER_CONSUME(stream, 'a')
@@ -164,7 +165,7 @@ json_read_false(struct json_parser_stream_t *stream, struct json_parser_handler_
 
 
 static int
-json_read_number(struct json_parser_stream_t *stream, struct json_parser_handler_t *handler)
+json_read_number(struct json_stream_t *stream, struct json_parser_handler_t *handler)
 {
     int minus = 1;
     int a = 0;
@@ -236,7 +237,7 @@ json_read_number(struct json_parser_stream_t *stream, struct json_parser_handler
 
 
 static int
-json_read_array(struct json_parser_stream_t *stream, struct json_parser_handler_t *handler)
+json_read_array(struct json_stream_t *stream, struct json_parser_handler_t *handler)
 {
     if (JSON_PARSER_CONSUME(stream, '[')) {
         return JSON_PARSER_ERROR_VALUE_INVALID;
@@ -287,7 +288,7 @@ json_read_array(struct json_parser_stream_t *stream, struct json_parser_handler_
 
 
 static int
-json_read_value(struct json_parser_stream_t *stream, struct json_parser_handler_t *handler)
+json_read_value(struct json_stream_t *stream, struct json_parser_handler_t *handler)
 {
     switch (JSON_PARSER_PEEK(stream)) {
 
@@ -326,120 +327,22 @@ json_read_value(struct json_parser_stream_t *stream, struct json_parser_handler_
             return JSON_PARSER_ERROR_VALUE_INVALID;
     }
 
-    JSON_PARSER_ASSERT(0);
+    assert(0);
 }
 
 
 int
-json_read(struct json_parser_stream_t *stream, struct json_parser_handler_t *handler)
+json_read(struct json_stream_t *stream, struct json_parser_handler_t *handler)
 {
     JSON_PARSER_SKIP_WS(stream);
     return json_read_value(stream, handler);
 }
 
 
-static void
-json_value_free(struct json_parser_allocator_t *alloc, struct json_value_t *v, int dont_free)
-{
-    if (JSON_VALUE_TYPE_OBJECT == v->type) {
-
-        struct json_object_elt_t *elt = v->obj.head;
-        struct json_object_elt_t *p;
-
-        while (elt) {
-            p = elt;
-            elt = elt->next;
-
-            json_value_free(alloc, &p->val, 1);
-            alloc->vtbl->on_free(alloc->ctx, p);
-        }
-    }
-    else if (JSON_VALUE_TYPE_ARRAY == v->type) {
-
-        struct json_array_elt_t *elt = v->arr.head;
-        struct json_array_elt_t *p;
-
-        while (elt) {
-            p = elt;
-            elt = elt->next;
-
-            json_value_free(alloc, &p->data, 1);
-            alloc->vtbl->on_free(alloc->ctx, p);
-        }
-    }
-
-    if (!dont_free) {
-        alloc->vtbl->on_free(alloc->ctx, v);
-    }
-}
-
-
-static struct json_value_t *
-json_value_add(struct json_parser_allocator_t *alloc, struct json_value_t *v, enum json_value_type_t type)
-{
-    struct json_value_t *p = NULL;
-
-    if (!v) {
-        p = alloc->vtbl->on_alloc(alloc->ctx, sizeof(struct json_value_t));
-    } else if (JSON_VALUE_TYPE_OBJECT == v->type) {
-        JSON_PARSER_ASSERT(v->obj.tail);
-        p = &v->obj.tail->val;
-        ++v->obj.size;
-    }
-    else if (JSON_VALUE_TYPE_ARRAY == v->type) {
-        struct json_array_elt_t *elt = alloc->vtbl->on_alloc(alloc->ctx, sizeof(struct json_array_elt_t));
-        p = &elt->data;
-        elt->next = NULL;
-
-        if (v->arr.tail) {
-            v->arr.tail->next = elt;
-        }
-        else {
-            v->arr.head = elt;
-        }
-
-        v->arr.tail = elt;
-        ++v->arr.size;
-    }
-
-    if (p) {
-        p->type = type;
-        p->parent = v;
-    }
-
-    return p;
-}
-
-
-static struct json_object_elt_t *
-json_value_add_key(struct json_parser_allocator_t *alloc, struct json_value_t *v, char *str, size_t len)
-{
-    JSON_PARSER_ASSERT(JSON_VALUE_TYPE_OBJECT == v->type);
-
-    struct json_object_elt_t *p = alloc->vtbl->on_alloc(alloc->ctx, sizeof(struct json_object_elt_t));
-    p->key.data = str;
-    p->key.len = len;
-    p->val.type = JSON_VALUE_TYPE_NONE;
-    p->val.parent = v;
-    p->next = NULL;
-
-    if (v->obj.tail) {
-        v->obj.tail->next = p;
-    }
-    else {
-        v->obj.head = p;
-    }
-
-    v->obj.tail = p;
-
-    return p;
-}
-
-
 static inline struct json_value_t *
 json_parser_add_value(struct json_parser_t *parser, enum json_value_type_t type)
 {
-    struct json_value_t *p = json_value_add(&parser->alloc, parser->current, type);
+    struct json_value_t *p = json_value_add(parser->a, parser->current, type);
 
     if (!parser->root) {
         parser->root = p;
@@ -465,7 +368,7 @@ json_parser_on_bool(void *ctx, int b)
     struct json_parser_t *parser = ctx;
 
     struct json_value_t *p = json_parser_add_value(parser, JSON_VALUE_TYPE_BOOL);
-    JSON_PARSER_ASSERT(p);
+    assert(p);
 
     p->b = !!b;
 
@@ -479,7 +382,7 @@ json_parser_on_int(void *ctx, int i)
     struct json_parser_t *parser = ctx;
 
     struct json_value_t *p = json_parser_add_value(parser, JSON_VALUE_TYPE_INT);
-    JSON_PARSER_ASSERT(p);
+    assert(p);
 
     p->i = i;
 
@@ -514,7 +417,7 @@ json_parser_on_double(void *ctx, double d)
     struct json_parser_t *parser = ctx;
 
     struct json_value_t *p = json_parser_add_value(parser, JSON_VALUE_TYPE_DOUBLE);
-    JSON_PARSER_ASSERT(p);
+    assert(p);
 
     p->d = d;
 
@@ -528,7 +431,7 @@ json_parser_on_string(void *ctx, const char *str, size_t len)
     struct json_parser_t *parser = ctx;
 
     struct json_value_t *p = json_parser_add_value(parser, JSON_VALUE_TYPE_STRING);
-    JSON_PARSER_ASSERT(p);
+    assert(p);
 
     p->str.data = (char *)str;
     p->str.len = len;
@@ -542,7 +445,7 @@ json_parser_on_key(void *ctx, const char *str, size_t len)
 {
     struct json_parser_t *parser = ctx;
 
-    json_value_add_key(&parser->alloc, parser->current, (char *)str, len);
+    json_value_add_key(parser->a, parser->current, (char *)str, len);
 
     return 0;
 }
@@ -553,13 +456,19 @@ json_parser_on_start_object(void *ctx)
 {
     struct json_parser_t *parser = ctx;
 
+    if ((parser->depth + 1) > parser->max_depth) {
+        return -1;
+    }
+
     struct json_value_t *p = json_parser_add_value(parser, JSON_VALUE_TYPE_OBJECT);
-    JSON_PARSER_ASSERT(p);
+    assert(p);
 
     p->obj.size = 0;
     p->obj.head = p->obj.tail = NULL;
 
     parser->current = p;
+
+    ++parser->depth;
 
     return 0;
 }
@@ -581,13 +490,19 @@ json_parser_on_start_array(void *ctx)
 {
     struct json_parser_t *parser = ctx;
 
+    if ((parser->depth + 1) > parser->max_depth) {
+        return -1;
+    }
+
     struct json_value_t *p = json_parser_add_value(parser, JSON_VALUE_TYPE_ARRAY);
-    JSON_PARSER_ASSERT(p);
+    assert(p);
 
     p->arr.size = 0;
     p->arr.head = p->arr.tail = NULL;
 
     parser->current = p;
+
+    ++parser->depth;
 
     return 0;
 }
@@ -636,48 +551,54 @@ json_parser_on_free(void *ctx, void *p)
 }
 
 
-static struct json_parser_allocator_vtbl_t
+static struct json_allocator_vtbl_t
 json_parser_allocator_vtbl = {
     &json_parser_on_alloc,
     &json_parser_on_free
 };
 
 
-int 
-json_parse(struct json_parser_t *parser)
-{
-    if (!parser->alloc.vtbl) {
-        parser->alloc.vtbl = &json_parser_allocator_vtbl;
-        parser->alloc.ctx = NULL;
-    }
+static struct json_allocator_t
+json_parser_allocator = {
+    &json_parser_allocator_vtbl,
+    NULL
+};
 
-    parser->root = parser->current = NULL;
+
+int 
+json_parse_stream(struct json_parser_t *parser, struct json_stream_t *stream)
+{
+    json_parser_clear(parser);
+
+    if (!parser->a) {
+        parser->a = &json_parser_allocator;
+    }
 
     struct json_parser_handler_t h;
     h.vtbl = &json_parser_handler_vtbl;
     h.ctx = parser;
 
-    int r = json_read(&parser->stream, &h);
+    int r = json_read(stream, &h);
     if (JSON_PARSER_ERROR_OK != r) {
-        json_free(parser);
+        json_value_free(parser->a, parser->root, 0);
     }
 
     return r;
 }
 
 
-void 
-json_free(struct json_parser_t *parser)
-{
-    json_value_free(&parser->alloc, parser->root, 0);
-    parser->current = parser->root = NULL;
-}
+struct json_str_stream_ctx_t {
+    char *src;
+    char *dst;
+    char *head;
+    char *tail;
+};
 
 
 static char
 json_str_stream_peek(void *ctx)
 {
-    struct json_parser_str_stream_t *stream = ctx;
+    struct json_str_stream_ctx_t *stream = ctx;
     if (stream->src >= stream->tail) {
         return -1;
     }
@@ -689,7 +610,7 @@ json_str_stream_peek(void *ctx)
 static char
 json_str_stream_take(void *ctx)
 {
-    struct json_parser_str_stream_t *stream = ctx;
+    struct json_str_stream_ctx_t *stream = ctx;
     if (stream->src >= stream->tail) {
         return -1;
     }
@@ -701,7 +622,7 @@ json_str_stream_take(void *ctx)
 static size_t
 json_str_stream_tell(void *ctx)
 {
-    struct json_parser_str_stream_t *stream = ctx;
+    struct json_str_stream_ctx_t *stream = ctx;
     return stream->src - stream->head;
 }
 
@@ -709,7 +630,7 @@ json_str_stream_tell(void *ctx)
 static void
 json_str_stream_put(void *ctx, char c)
 {
-    struct json_parser_str_stream_t *stream = ctx;
+    struct json_str_stream_ctx_t *stream = ctx;
     *stream->dst++;
 }
 
@@ -717,19 +638,19 @@ json_str_stream_put(void *ctx, char c)
 static char *
 json_str_stream_put_begin(void *ctx)
 {
-    struct json_parser_str_stream_t *stream = ctx;
+    struct json_str_stream_ctx_t *stream = ctx;
     return stream->dst = stream->src;
 }
 
 static size_t
 json_str_stream_put_end(void *ctx, char *begin)
 {
-    struct json_parser_str_stream_t *stream = ctx;
+    struct json_str_stream_ctx_t *stream = ctx;
     return stream->dst - begin;
 }
 
 
-static struct json_parser_stream_vtbl_t
+static struct json_stream_vtbl_t
 json_parser_str_stream_vtbl = {
     &json_str_stream_peek,
     &json_str_stream_take,
@@ -741,14 +662,19 @@ json_parser_str_stream_vtbl = {
 };
 
 
-void 
-json_parser_prepare_str_stream(struct json_parser_t *parser, struct json_parser_str_stream_t *stream, const char *str, size_t len)
+int
+json_parse_str(struct json_parser_t *parser, const char *str, size_t len)
 {
-    stream->src = stream->head = (char *)str;
-    stream->tail = (char *)str + len;
-    stream->dst = NULL;
+    struct json_str_stream_ctx_t ctx;
 
-    parser->stream.vtbl = &json_parser_str_stream_vtbl;
-    parser->stream.ctx = stream;
+    ctx.src = ctx.head = (char *)str;
+    ctx.tail = ctx.src + len;
+    ctx.dst = NULL;
+
+    struct json_stream_t stream;
+    stream.vtbl = &json_parser_str_stream_vtbl;
+    stream.ctx = &ctx;
+
+    return json_parse_stream(parser, &stream);
 }
 
