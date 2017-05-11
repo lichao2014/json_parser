@@ -149,25 +149,6 @@ struct json_parser_str_stream_t {
 };
 
 
-int json_read_string(struct json_parser_stream_t *stream, struct json_parser_handler_t *handler);
-
-int json_read_number(struct json_parser_stream_t *stream, struct json_parser_handler_t *handler);
-
-int json_read_object(struct json_parser_stream_t *stream, struct json_parser_handler_t *handler);
-
-int json_read_array(struct json_parser_stream_t *stream, struct json_parser_handler_t *handler);
-
-int json_read_true(struct json_parser_stream_t *stream, struct json_parser_handler_t *handler);
-
-int json_read_false(struct json_parser_stream_t *stream, struct json_parser_handler_t *handler);
-
-int json_read_null(struct json_parser_stream_t *stream, struct json_parser_handler_t *handler);
-
-int json_read_value(struct json_parser_stream_t *stream, struct json_parser_handler_t *handler);
-
-typedef int(*json_read_fn_t)(struct json_parser_stream_t *stream, struct json_parser_handler_t *handler);
-json_read_fn_t json_read_testing(struct json_parser_stream_t *);
-
 int json_read(struct json_parser_stream_t *stream, struct json_parser_handler_t *handler);
 
 int json_parse(struct json_parser_t *parser);
