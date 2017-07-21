@@ -1,7 +1,7 @@
 #include <assert.h>
 #include "json_parser.h"
 
-#define TEST_JSON_STR       "[1, false, null, \"x\", { \"x\" : 2.343 }]"
+#define TEST_JSON_STR       "\"\ta\\\"\\bc\/\""
 
 int
 main()
@@ -12,7 +12,13 @@ main()
 
     while (1) {
         int ret = json_parse_str(&parser, TEST_JSON_STR, sizeof(TEST_JSON_STR) - 1);
-        assert(0 == ret);
+
+        struct json_value_t *v = parser.root;
+        assert(0 == ret && JSON_VALUE_TYPE_STRING == v->type);
+
+        char a[64];
+        size_t n =json_strcpy(a, &v->str, sizeof a);
+        assert(n == v->str.len);
     }
 
     json_parser_clear(&parser);

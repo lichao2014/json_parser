@@ -18,6 +18,35 @@ json_read_string_opt(struct json_stream_t *stream, struct json_parser_handler_t 
 
     char c;
     while (c = JSON_PARSER_TAKE(stream), '"' != c) {
+
+        if ('\\' == c) {
+            c = JSON_PARSER_TAKE(stream);
+            switch (c) {
+            case '\\':
+            case '/':
+            case '"':
+                break;
+            case 'b':
+                c = '\b';
+                break;
+            case 'f':
+                c = '\f';
+                break;
+            case 'n':
+                c = '\n';
+                break;
+            case 'r':
+                c = '\r';
+                break;
+            case 't':
+                c = '\t';
+                break;
+            case 'u':
+            default:
+                return JSON_PARSER_ERROR_VALUE_INVALID;
+            }
+        }
+
         JSON_PARSER_PUT(stream, c);
     }
 

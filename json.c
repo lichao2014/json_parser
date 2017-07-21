@@ -103,3 +103,47 @@ json_value_add_key(struct json_allocator_t *a, struct json_value_t *v, char *str
 
     return p;
 }
+
+
+size_t 
+json_strcpy(char *dst, struct json_string_t *str, size_t n)
+{
+    char *p;
+    size_t i;
+
+    for (i = 0, p = str->data; i < n && i < str->len; ++i, ++p) {
+        if ('\\' == *p) {
+            ++p;
+
+            switch (*p) {
+            case '\\':
+            case '/':
+            case '"':
+                break;
+            case 'b':
+                dst[i] = '\b';
+                continue;
+            case 'f':
+                dst[i] = '\f';
+                continue;
+            case 'n':
+                dst[i] = '\n';
+                continue;
+            case 'r':
+                dst[i] = '\r';
+                continue;
+            case 't':
+                dst[i] = '\t';
+                continue;
+            case 'u':
+            default:
+                return i;
+            }
+        }
+
+        dst[i] = *p;
+    }
+
+    return i;
+}
+

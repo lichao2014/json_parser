@@ -99,5 +99,6 @@ struct json_value_t *json_value_add(struct json_allocator_t *a, struct json_valu
 
 struct json_object_elt_t *json_value_add_key(struct json_allocator_t *a, struct json_value_t *v, char *str, size_t len);
 
+size_t json_strcpy(char *dst, struct json_string_t *str, size_t n);
 
 #endif //_JSON_H_INCLUDED
